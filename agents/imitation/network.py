@@ -1,9 +1,5 @@
-from __future__ import print_function
-
 import numpy as np
-
 import tensorflow as tf
-
 
 def weight_ones(shape, name):
     initial = tf.constant(1.0, shape=shape, name=name)
@@ -12,7 +8,7 @@ def weight_ones(shape, name):
 
 def weight_xavi_init(shape, name):
     initial = tf.get_variable(name=name, shape=shape,
-                              initializer=tf.contrib.layers.xavier_initializer())
+            initializer=tf.contrib.layers.xavier_initializer())
     return initial
 
 
@@ -23,22 +19,20 @@ def bias_variable(shape, name):
 
 class Network(object):
 
-    def __init__(self, dropout, image_shape):
+    def __init__(self):
         """ We put a few counters to see how many times we called each function """
-        self._dropout_vec = dropout
-        self._image_shape = image_shape
-        self._count_conv = 0
-        self._count_pool = 0
-        self._count_bn = 0
+        self._count_conv        = 0
+        self._count_pool        = 0
+        self._count_bn          = 0
+        self._count_dropouts    = 0
         self._count_activations = 0
-        self._count_dropouts = 0
-        self._count_fc = 0
-        self._count_lstm = 0
-        self._count_soft_max = 0
-        self._conv_kernels = []
-        self._conv_strides = []
-        self._weights = {}
-        self._features = {}
+        self._count_fc          = 0
+        self._count_lstm        = 0
+        self._count_soft_max    = 0
+        self._conv_kernels      = []
+        self._conv_strides      = []
+        self._weights           = {}
+        self._features          = {}
 
     """ Our conv is currently using bias """
 
@@ -71,19 +65,17 @@ class Network(object):
     def bn(self, x):
         self._count_bn += 1
         return tf.contrib.layers.batch_norm(x, is_training=False,
-                                            updates_collections=None,
-                                            scope='bn' + str(self._count_bn))
+                                            updates_collections=None, scope='bn' + str(self._count_bn))
 
     def activation(self, x):
         self._count_activations += 1
         return tf.nn.relu(x, name='relu' + str(self._count_activations))
 
-    def dropout(self, x):
-        print("Dropout", self._count_dropouts)
+    def dropout(self, x, prob=1):
+        print ("Dropout", self._count_dropouts)
         self._count_dropouts += 1
-        output = tf.nn.dropout(x, self._dropout_vec[self._count_dropouts - 1],
+        output = tf.nn.dropout(x, prob,
                                name='dropout' + str(self._count_dropouts))
-
         return output
 
     def fc(self, x, output_size):
@@ -96,20 +88,22 @@ class Network(object):
 
         return tf.nn.xw_plus_b(x, weights, bias, name='fc_' + str(self._count_fc))
 
-    def conv_block(self, x, kernel_size, stride, output_size, padding_in='SAME'):
-        print(" === Conv", self._count_conv, "  :  ", kernel_size, stride, output_size)
+    def conv_block(self, x, kernel_size, stride, output_size, padding_in='SAME', dropout_prob=None):
+        print (" === Conv", self._count_conv, "  :  ", kernel_size, stride, output_size)
         with tf.name_scope("conv_block" + str(self._count_conv)):
             x = self.conv(x, kernel_size, stride, output_size, padding_in=padding_in)
             x = self.bn(x)
-            x = self.dropout(x)
+            if dropout_prob is not None:
+                x = self.dropout(x, dropout_prob)
 
             return self.activation(x)
 
-    def fc_block(self, x, output_size):
-        print(" === FC", self._count_fc, "  :  ", output_size)
+    def fc_block(self, x, output_size, dropout_prob=None):
+        print (" === FC", self._count_fc, "  :  ", output_size)
         with tf.name_scope("fc" + str(self._count_fc + 1)):
             x = self.fc(x, output_size)
-            x = self.dropout(x)
+            if dropout_prob is not None:
+                x = self.dropout(x, dropout_prob)
             self._features['fc_block' + str(self._count_fc + 1)] = x
             return self.activation(x)
 
@@ -120,76 +114,76 @@ class Network(object):
         return self._features
 
 
-def load_imitation_learning_network(input_image, input_data, input_size, dropout):
-    branches = []
+def make_network():
+    inp_img = tf.placeholder(tf.float32, shape=[None, 88, 200, 3], name='input_image')
+    inp_speed = tf.placeholder(tf.float32, shape=[None, 1], name='input_speed')
 
-    x = input_image
+    target_control = tf.placeholder(tf.float32, shape=[None, 3], name='target_control')
+    #target_command = tf.placeholder(tf.float32, shape=[None, 4], name='target_command')
 
-    network_manager = Network(dropout, tf.shape(x))
+    network_manager = Network()
 
-    """conv1"""  # kernel sz, stride, num feature maps
-    xc = network_manager.conv_block(x, 5, 2, 32, padding_in='VALID')
-    print(xc)
+    xc = network_manager.conv_block(inp_img, 5, 2, 32, padding_in='VALID')
+    print (xc)
     xc = network_manager.conv_block(xc, 3, 1, 32, padding_in='VALID')
-    print(xc)
+    print (xc)
 
-    """conv2"""
     xc = network_manager.conv_block(xc, 3, 2, 64, padding_in='VALID')
-    print(xc)
+    print (xc)
     xc = network_manager.conv_block(xc, 3, 1, 64, padding_in='VALID')
-    print(xc)
+    print (xc)
 
-    """conv3"""
     xc = network_manager.conv_block(xc, 3, 2, 128, padding_in='VALID')
-    print(xc)
+    print (xc)
     xc = network_manager.conv_block(xc, 3, 1, 128, padding_in='VALID')
-    print(xc)
+    print (xc)
 
-    """conv4"""
     xc = network_manager.conv_block(xc, 3, 1, 256, padding_in='VALID')
-    print(xc)
+    print (xc)
     xc = network_manager.conv_block(xc, 3, 1, 256, padding_in='VALID')
-    print(xc)
-    """mp3 (default values)"""
+    print (xc)
 
-    """ reshape """
     x = tf.reshape(xc, [-1, int(np.prod(xc.get_shape()[1:]))], name='reshape')
-    print(x)
+    print (x)
 
-    """ fc1 """
-    x = network_manager.fc_block(x, 512)
-    print(x)
-    """ fc2 """
-    x = network_manager.fc_block(x, 512)
+    x = network_manager.fc_block(x, 512, dropout_prob=1)
+    print (x)
+    x = network_manager.fc_block(x, 512, dropout_prob=1)
 
-    """Process Control"""
-
-    """ Speed (measurements)"""
     with tf.name_scope("Speed"):
-        speed = input_data[1]  # get the speed from input data
-        speed = network_manager.fc_block(speed, 128)
-        speed = network_manager.fc_block(speed, 128)
+        speed = network_manager.fc_block(inp_speed, 128, dropout_prob=1)
+        speed = network_manager.fc_block(speed, 128, dropout_prob=1)
 
-    """ Joint sensory """
     j = tf.concat([x, speed], 1)
-    j = network_manager.fc_block(j, 512)
+    j = network_manager.fc_block(j, 512, dropout_prob=1)
 
-    """Start BRANCHING"""
+    control_out = network_manager.fc_block(j, 256, dropout_prob=1)
+    control_out = network_manager.fc_block(control_out, 256)
+    control_out = network_manager.fc(control_out, 3)
+    loss = tf.reduce_sum(tf.square(tf.subtract(control_out, target_control)))
+
+    '''
     branch_config = [["Steer", "Gas", "Brake"], ["Steer", "Gas", "Brake"], \
-                     ["Steer", "Gas", "Brake"], ["Steer", "Gas", "Brake"], ["Speed"]]
+                     ["Steer", "Gas", "Brake"], ["Steer", "Gas", "Brake"]]
 
+    branches = []
+    losses = []
     for i in range(0, len(branch_config)):
         with tf.name_scope("Branch_" + str(i)):
-            if branch_config[i][0] == "Speed":
-                # we only use the image as input to speed prediction
-                branch_output = network_manager.fc_block(x, 256)
-                branch_output = network_manager.fc_block(branch_output, 256)
-            else:
-                branch_output = network_manager.fc_block(j, 256)
-                branch_output = network_manager.fc_block(branch_output, 256)
-
+            branch_output = network_manager.fc_block(j, 256, dropout_prob=1)
+            branch_output = network_manager.fc_block(branch_output, 256)
             branches.append(network_manager.fc(branch_output, len(branch_config[i])))
+            losses.append(tf.square(tf.subtract(branches[i], target_control)))
 
-        print(branch_output)
+        print (branch_output)
 
-    return branches
+    losses = tf.convert_to_tensor(losses)
+    losses = tf.reduce_mean(tf.transpose(losses, [1, 2, 0]), axis=1) * target_command;
+    loss = tf.reduce_sum(losses)
+    '''
+
+    return {'loss': loss,
+            'inputs': [inp_img, inp_speed],
+            'labels': [target_control],
+            'outputs': [control_out]}
+

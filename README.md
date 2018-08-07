@@ -74,7 +74,11 @@ They are stored on the "dataset" vector.
 27. Camera (Which camera was used) 
 28. Angle (The yaw angle for this camera)
 
-
+Useful code tricks
+---
+1. If you change the imitation network, you can refer to `agents/imitation/network.py` and `agents/imitation/imitation_learning.py`
+2. If you want to change start place, change `carla/driving_benchmark/experiment_suites/corl_2017.py`
+3. This code makes the car never stop. You can change the code in `carla/driving_benchmark/driving_benchmark.py Line 222`.
 
 
 Paper

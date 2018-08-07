@@ -6,12 +6,15 @@ import scipy
 
 import tensorflow as tf
 import numpy as np
+import cv2
 
 slim = tf.contrib.slim
 
 from carla.agent import Agent
 from carla.carla_server_pb2 import Control
-from agents.imitation.imitation_learning_network import load_imitation_learning_network
+from tensorflow.core.protobuf import saver_pb2
+from agents.imitation.network import make_network
+from PIL import Image
 
 
 class ImitationLearning(Agent):
@@ -19,72 +22,16 @@ class ImitationLearning(Agent):
     def __init__(self, city_name, avoid_stopping, memory_fraction=0.25, image_cut=[115, 510]):
 
         Agent.__init__(self)
-
-        self.dropout_vec = [1.0] * 8 + [0.7] * 2 + [0.5] * 2 + [0.5] * 1 + [0.5, 1.] * 5
-
-        config_gpu = tf.ConfigProto()
-
-        # GPU to be selected, just take zero , select GPU  with CUDA_VISIBLE_DEVICES
-
-        config_gpu.gpu_options.visible_device_list = '0'
-
-        config_gpu.gpu_options.per_process_gpu_memory_fraction = memory_fraction
-
         self._image_size = (88, 200, 3)
         self._avoid_stopping = avoid_stopping
-
-        self._sess = tf.Session(config=config_gpu)
-
-        with tf.device('/gpu:0'):
-            self._input_images = tf.placeholder("float", shape=[None, self._image_size[0],
-                                                                self._image_size[1],
-                                                                self._image_size[2]],
-                                                name="input_image")
-
-            self._input_data = []
-
-            self._input_data.append(tf.placeholder(tf.float32,
-                                                   shape=[None, 4], name="input_control"))
-
-            self._input_data.append(tf.placeholder(tf.float32,
-                                                   shape=[None, 1], name="input_speed"))
-
-            self._dout = tf.placeholder("float", shape=[len(self.dropout_vec)])
-
-        with tf.name_scope("Network"):
-            self._network_tensor = load_imitation_learning_network(self._input_images,
-                                                                   self._input_data,
-                                                                   self._image_size, self._dout)
-
-        import os
-        dir_path = os.path.dirname(__file__)
-
-        self._models_path = dir_path + '/model/'
-
-        # tf.reset_default_graph()
+        self.network = make_network()
+        self._sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
         self._sess.run(tf.global_variables_initializer())
-
-        self.load_model()
+        saver = tf.train.Saver(write_version=saver_pb2.SaverDef.V2)
+        saver.restore(self._sess, './agents/imitation/mymodel/epoch-374.ckpt')
+        print('hellohellohellohellohellohello')
 
         self._image_cut = image_cut
-
-    def load_model(self):
-
-        variables_to_restore = tf.global_variables()
-
-        saver = tf.train.Saver(variables_to_restore, max_to_keep=0)
-
-        if not os.path.exists(self._models_path):
-            raise RuntimeError('failed to find the models path')
-
-        ckpt = tf.train.get_checkpoint_state(self._models_path)
-        if ckpt:
-            print('Restoring from ', ckpt.model_checkpoint_path)
-            saver.restore(self._sess, ckpt.model_checkpoint_path)
-        else:
-            ckpt = 0
-
-        return ckpt
 
     def run_step(self, measurements, sensor_data, directions, target):
 
@@ -95,21 +42,21 @@ class ImitationLearning(Agent):
 
     def _compute_action(self, rgb_image, speed, direction=None):
 
-        rgb_image = rgb_image[self._image_cut[0]:self._image_cut[1], :]
+        # rgb_image = rgb_image[self._image_cut[0]:self._image_cut[1], :]
 
         image_input = scipy.misc.imresize(rgb_image, [self._image_size[0],
                                                       self._image_size[1]])
 
         image_input = image_input.astype(np.float32)
-        image_input = np.multiply(image_input, 1.0 / 255.0)
 
-        steer, acc, brake = self._control_function(image_input, speed, direction, self._sess)
+        steer, acc, brake = self._control_function(image_input, speed, self._sess)
 
         # This a bit biased, but is to avoid fake breaking
 
         if brake < 0.1:
             brake = 0.0
-
+        if acc <= 0:
+            acc = 0
         if acc > brake:
             brake = 0.0
 
@@ -127,54 +74,28 @@ class ImitationLearning(Agent):
 
         return control
 
-    def _control_function(self, image_input, speed, control_input, sess):
+    def _control_function(self, image_input, speed, sess):
 
-        branches = self._network_tensor
-        x = self._input_images
-        dout = self._dout
-        input_speed = self._input_data[1]
 
         image_input = image_input.reshape(
             (1, self._image_size[0], self._image_size[1], self._image_size[2]))
 
         # Normalize with the maximum speed from the training set ( 90 km/h)
-        speed = np.array(speed / 25.0)
+        # speed = 0
+        speed = np.array([[speed]])
+        # print(image_input.shape ,image_input.dtype)
+        # cv2.imwrite('/home/kadn/Desktop/test.jpg', image_input[0].astype('uint8'))
+        # img = cv2.imread("/home/kadn/Desktop/test.jpg")
+        # img = cv2.cvtColor(img,cv2.COLOR_RGB2BGR)
+        # img = img.reshape((1, self._image_size[0], self._image_size[1], self._image_size[2]))
+        target_control = sess.run(self.network['outputs'][0],
+                                  feed_dict={self.network['inputs'][0]:image_input,
+                                             self.network['inputs'][1]: speed})
 
-        speed = speed.reshape((1, 1))
+        predicted_steers = (target_control[0][0])
 
-        if control_input == 2 or control_input == 0.0:
-            all_net = branches[0]
-        elif control_input == 3:
-            all_net = branches[2]
-        elif control_input == 4:
-            all_net = branches[3]
-        else:
-            all_net = branches[1]
+        predicted_acc = (target_control[0][1])
 
-        feedDict = {x: image_input, input_speed: speed, dout: [1] * len(self.dropout_vec)}
-
-        output_all = sess.run(all_net, feed_dict=feedDict)
-
-        predicted_steers = (output_all[0][0])
-
-        predicted_acc = (output_all[0][1])
-
-        predicted_brake = (output_all[0][2])
-
-        if self._avoid_stopping:
-            predicted_speed = sess.run(branches[4], feed_dict=feedDict)
-            predicted_speed = predicted_speed[0][0]
-            real_speed = speed * 25.0
-
-            real_predicted = predicted_speed * 25.0
-            if real_speed < 2.0 and real_predicted > 3.0:
-                # If (Car Stooped) and
-                #  ( It should not have stopped, use the speed prediction branch for that)
-
-                predicted_acc = 1 * (5.6 / 25.0 - speed) + predicted_acc
-
-                predicted_brake = 0.0
-
-                predicted_acc = predicted_acc[0][0]
+        predicted_brake = (target_control[0][2])
 
         return predicted_steers, predicted_acc, predicted_brake
