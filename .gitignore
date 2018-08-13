@@ -3,6 +3,7 @@
 _benchmarks_results/
 agents/__pycache__/
 agents/imitation/__pycache__/
+agents/imitation/mymodel/*
 carla/__pycache__/
 carla/agent/__pycache__/
 carla/driving_benchmark/__pycache__/
