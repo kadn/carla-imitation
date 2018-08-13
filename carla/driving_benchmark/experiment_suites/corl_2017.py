@@ -31,8 +31,7 @@ class CoRL2017(ExperimentSuite):
         """
 
         def _poses_straight():
-            return [[85, 133], [39, 15], [110, 144], [7, 146], [0, 17]]
-                    # [36, 40], [39, 35], [110, 114], [7, 3], [0, 4],
+            return [[104, 114], [7, 3], [0, 4],[36, 40], [39, 35]]
                     # [36, 40], [39, 35], [110, 114], [7, 3], [0, 4],
                     # [36, 40], [39, 35], [110, 114], [7, 3], [0, 4],
                     # [36, 40], [39, 35], [110, 114], [7, 3], [0, 4]]
@@ -99,7 +98,7 @@ class CoRL2017(ExperimentSuite):
 
         camera = Camera('CameraRGB')
         camera.set(FOV=100)
-        camera.set_image_size(200, 88)
+        camera.set_image_size(800, 600)
         camera.set_position(2.0, 0.0, 1.4)
         camera.set_rotation(-15.0, 0, 0)
 

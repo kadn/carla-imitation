@@ -28,7 +28,7 @@ class ImitationLearning(Agent):
         self._sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
         self._sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver(write_version=saver_pb2.SaverDef.V2)
-        saver.restore(self._sess, './agents/imitation/mymodel/epoch-374.ckpt')
+        saver.restore(self._sess, './agents/imitation/mymodel/epoch-44.ckpt')
         print('hellohellohellohellohellohello')
 
         self._image_cut = image_cut
@@ -42,7 +42,7 @@ class ImitationLearning(Agent):
 
     def _compute_action(self, rgb_image, speed, direction=None):
 
-        # rgb_image = rgb_image[self._image_cut[0]:self._image_cut[1], :]
+        rgb_image = rgb_image[self._image_cut[0]:self._image_cut[1], :]
 
         image_input = scipy.misc.imresize(rgb_image, [self._image_size[0],
                                                       self._image_size[1]])
