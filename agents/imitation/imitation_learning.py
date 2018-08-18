@@ -22,13 +22,15 @@ class ImitationLearning(Agent):
     def __init__(self, city_name, avoid_stopping, memory_fraction=0.25, image_cut=[115, 510]):
 
         Agent.__init__(self)
+        self.images = list([])
+        self.imagenum = 0
         self._image_size = (88, 200, 3)
         self._avoid_stopping = avoid_stopping
         self.network = make_network()
         self._sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
         self._sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver(write_version=saver_pb2.SaverDef.V2)
-        saver.restore(self._sess, './agents/imitation/mymodel/epoch-44.ckpt')
+        saver.restore(self._sess, './agents/imitation/mymodel/epoch-149.ckpt')
         print('hellohellohellohellohellohello')
 
         self._image_cut = image_cut
@@ -76,9 +78,31 @@ class ImitationLearning(Agent):
 
     def _control_function(self, image_input, speed, sess):
 
-
         image_input = image_input.reshape(
             (1, self._image_size[0], self._image_size[1], self._image_size[2]))
+
+        if len(self.images) != 10:
+           self.images.append(image_input)
+           return 0,0,0
+
+        # 实现循环加入最新的
+        if len(self.images) == 10:
+            self.images[0:9] = self.images[1:10]
+            self.images[9] = image_input
+
+        images = np.concatenate([self.images[0],
+                           self.images[1],
+                           self.images[2],
+                           self.images[3],
+                           self.images[4],
+                           self.images[5],
+                           self.images[6],
+                           self.images[7],
+                           self.images[8],
+                           self.images[9],
+                           ],axis=3)
+
+        
 
         # Normalize with the maximum speed from the training set ( 90 km/h)
         # speed = 0
@@ -89,8 +113,9 @@ class ImitationLearning(Agent):
         # img = cv2.cvtColor(img,cv2.COLOR_RGB2BGR)
         # img = img.reshape((1, self._image_size[0], self._image_size[1], self._image_size[2]))
         target_control = sess.run(self.network['outputs'][0],
-                                  feed_dict={self.network['inputs'][0]:image_input,
-                                             self.network['inputs'][1]: speed})
+                                  feed_dict={self.network['inputs'][0]:images,
+                                             self.network['inputs'][1]: speed,
+                                             self.network['train_state']:False})
 
         predicted_steers = (target_control[0][0])
 
